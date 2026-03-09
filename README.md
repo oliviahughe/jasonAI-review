@@ -93,3 +93,4 @@ pip install openai
 - `config.json`（含 API Key）已加入 `.gitignore`，不会提交到 Git
 - 知识库向量数据存储在本地，不会上传到外部服务器（Embedding API 调用除外）
 - 建议生成内置硬约束校验，若 AI 输出与结构化财务数据冲突会自动重试，最多重试 2 次；仍不通过则拒绝返回，防止错误建议流出
+
