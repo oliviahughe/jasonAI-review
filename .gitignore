@@ -1,0 +1,10 @@
+# API keys - never commit
+config.json
+
+# Temp files generated at runtime
+tmp_*.txt
+temp_input.json
+
+# Python cache
+__pycache__/
+*.pyc
