@@ -1,0 +1,70 @@
+name: 飞书推送通知
+
+on:
+  push:
+    branches:
+      - master
+      - main
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 发送飞书消息
+        run: |
+          curl -X POST "${{ secrets.FEISHU_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "msg_type": "interactive",
+              "card": {
+                "header": {
+                  "title": {
+                    "tag": "plain_text",
+                    "content": "📦 jasonAI 有新提交"
+                  },
+                  "template": "blue"
+                },
+                "elements": [
+                  {
+                    "tag": "div",
+                    "fields": [
+                      {
+                        "is_short": true,
+                        "text": {
+                          "tag": "lark_md",
+                          "content": "**分支**\n${{ github.ref_name }}"
+                        }
+                      },
+                      {
+                        "is_short": true,
+                        "text": {
+                          "tag": "lark_md",
+                          "content": "**提交人**\n${{ github.actor }}"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "tag": "div",
+                    "text": {
+                      "tag": "lark_md",
+                      "content": "**提交信息**\n${{ github.event.head_commit.message }}"
+                    }
+                  },
+                  {
+                    "tag": "action",
+                    "actions": [
+                      {
+                        "tag": "button",
+                        "text": {
+                          "tag": "plain_text",
+                          "content": "查看提交"
+                        },
+                        "url": "${{ github.event.head_commit.url }}",
+                        "type": "default"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }'
