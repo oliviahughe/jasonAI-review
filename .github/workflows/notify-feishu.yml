@@ -2,165 +2,23 @@ name: 飞书推送通知
 
 on:
   push:
-    branches:
-      - master
-      - main
+    branches: [master, main]
   pull_request:
     types: [opened, closed, reopened]
 
 jobs:
   notify:
-    runs-on: ubuntu-latest
-    steps:
-      - name: 发送 Push 通知
-        if: github.event_name == 'push'
-        run: |
-          curl -X POST "${{ secrets.FEISHU_WEBHOOK_URL }}" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "msg_type": "interactive",
-              "card": {
-                "header": {
-                  "title": {
-                    "tag": "plain_text",
-                    "content": "📦 jasonAI 有新提交"
-                  },
-                  "template": "blue"
-                },
-                "elements": [
-                  {
-                    "tag": "div",
-                    "fields": [
-                      {
-                        "is_short": true,
-                        "text": {
-                          "tag": "lark_md",
-                          "content": "**分支**\n${{ github.ref_name }}"
-                        }
-                      },
-                      {
-                        "is_short": true,
-                        "text": {
-                          "tag": "lark_md",
-                          "content": "**提交人**\n${{ github.actor }}"
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "tag": "div",
-                    "text": {
-                      "tag": "lark_md",
-                      "content": "**提交信息**\n${{ github.event.head_commit.message }}"
-                    }
-                  },
-                  {
-                    "tag": "action",
-                    "actions": [
-                      {
-                        "tag": "button",
-                        "text": {
-                          "tag": "plain_text",
-                          "content": "查看提交"
-                        },
-                        "url": "${{ github.event.head_commit.url }}",
-                        "type": "default"
-                      }
-                    ]
-                  }
-                ]
-              }
-            }'
-
-      - name: 发送 PR 通知
-        if: github.event_name == 'pull_request'
-        env:
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_USER: ${{ github.event.pull_request.user.login }}
-          PR_BASE: ${{ github.event.pull_request.base.ref }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          PR_ACTION: ${{ github.event.action }}
-          PR_MERGED: ${{ github.event.pull_request.merged }}
-        run: |
-          # 根据动作类型设置标题和颜色
-          if [ "$PR_ACTION" = "opened" ]; then
-            TITLE="🔀 新 PR 待审查"
-            COLOR="orange"
-            STATUS="新建"
-          elif [ "$PR_ACTION" = "reopened" ]; then
-            TITLE="🔀 PR 已重新打开"
-            COLOR="orange"
-            STATUS="重新打开"
-          elif [ "$PR_MERGED" = "true" ]; then
-            TITLE="✅ PR 已合并"
-            COLOR="green"
-            STATUS="已合并"
-          else
-            TITLE="❌ PR 已关闭"
-            COLOR="red"
-            STATUS="已关闭"
-          fi
-
-          curl -X POST "${{ secrets.FEISHU_WEBHOOK_URL }}" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"msg_type\": \"interactive\",
-              \"card\": {
-                \"header\": {
-                  \"title\": {
-                    \"tag\": \"plain_text\",
-                    \"content\": \"$TITLE\"
-                  },
-                  \"template\": \"$COLOR\"
-                },
-                \"elements\": [
-                  {
-                    \"tag\": \"div\",
-                    \"fields\": [
-                      {
-                        \"is_short\": true,
-                        \"text\": {
-                          \"tag\": \"lark_md\",
-                          \"content\": \"**状态**\n$STATUS\"
-                        }
-                      },
-                      {
-                        \"is_short\": true,
-                        \"text\": {
-                          \"tag\": \"lark_md\",
-                          \"content\": \"**提交人**\n$PR_USER\"
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    \"tag\": \"div\",
-                    \"text\": {
-                      \"tag\": \"lark_md\",
-                      \"content\": \"**PR 标题**\n$PR_TITLE\"
-                    }
-                  },
-                  {
-                    \"tag\": \"div\",
-                    \"text\": {
-                      \"tag\": \"lark_md\",
-                      \"content\": \"**目标分支**\n$PR_BASE\"
-                    }
-                  },
-                  {
-                    \"tag\": \"action\",
-                    \"actions\": [
-                      {
-                        \"tag\": \"button\",
-                        \"text\": {
-                          \"tag\": \"plain_text\",
-                          \"content\": \"查看 PR\"
-                        },
-                        \"url\": \"$PR_URL\",
-                        \"type\": \"default\"
-                      }
-                    ]
-                  }
-                ]
-              }
-            }"
+    uses: MOYAI1234/.github/.github/workflows/notify-feishu.yml@main
+    with:
+      event_name: ${{ github.event_name }}
+      repo_name: ${{ github.repository }}
+      actor: ${{ github.actor }}
+      ref_name: ${{ github.ref_name }}
+      commit_message: ${{ github.event.head_commit.message }}
+      commit_url: ${{ github.event.head_commit.url }}
+      pr_title: ${{ github.event.pull_request.title }}
+      pr_url: ${{ github.event.pull_request.html_url }}
+      pr_action: ${{ github.event.action }}
+      pr_merged: ${{ toJson(github.event.pull_request.merged) }}
+      pr_base: ${{ github.event.pull_request.base.ref }}
+    secrets: inherit
