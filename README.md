@@ -99,6 +99,61 @@ python scripts/mcp_server.py
 - `.env.tencent.example`
 - `deploy/caddy/Caddyfile`
 
+### 5. 连接远程 MCP
+
+远程服务启动后，SSE 入口通常为：
+
+```text
+https://你的域名/sse
+```
+
+如果服务端配置了 `AUTH_TOKEN`，客户端请求时还需要带上：
+
+```text
+Authorization: Bearer <你的 AUTH_TOKEN>
+```
+
+#### Claude Desktop
+
+在 Claude Desktop 的 MCP 配置中注册一个远程 `sse` 服务即可。可参考下面的结构：
+
+```json
+{
+  "mcpServers": {
+    "jason-kb": {
+      "transport": {
+        "type": "sse",
+        "url": "https://你的域名/sse",
+        "headers": {
+          "Authorization": "Bearer <你的 AUTH_TOKEN>"
+        }
+      }
+    }
+  }
+}
+```
+
+如果服务端没有配置 `AUTH_TOKEN`，可以去掉 `headers`。
+
+#### Claude Code
+
+在 Claude Code 的 MCP 配置里注册同一个远程服务，服务名仍建议使用 `jason-kb`。核心信息与上面一致：
+
+- 传输方式：`sse`
+- 地址：`https://你的域名/sse`
+- 鉴权头：`Authorization: Bearer <你的 AUTH_TOKEN>`（如果启用了鉴权）
+
+#### 其他 AI CLI / MCP 客户端
+
+只要客户端支持 MCP over SSE，都可以接入这个服务。最少需要提供以下信息：
+
+- Server name: `jason-kb`
+- Transport: `sse`
+- URL: `https://你的域名/sse`
+- Header: `Authorization: Bearer <你的 AUTH_TOKEN>`（如果服务端启用了鉴权）
+
+工具列表会由 MCP Server 自动暴露，客户端无需手动维护工具 schema。
+
 ---
 
 ## 使用方式
