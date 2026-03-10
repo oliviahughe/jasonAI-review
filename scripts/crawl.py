@@ -53,6 +53,7 @@ def extract_wechat_article(url: str, settings: dict) -> dict:
     timeout = settings["crawl"].get("timeout", 30)
 
     resp = requests.get(url, headers=headers, timeout=timeout)
+    resp.raise_for_status()
     resp.encoding = "utf-8"
     soup = BeautifulSoup(resp.text, "html.parser")
 
@@ -85,6 +86,7 @@ def extract_generic_article(url: str, settings: dict) -> dict:
     timeout = settings["crawl"].get("timeout", 30)
 
     resp = requests.get(url, headers=headers, timeout=timeout)
+    resp.raise_for_status()
     resp.encoding = "utf-8"
     soup = BeautifulSoup(resp.text, "html.parser")
 

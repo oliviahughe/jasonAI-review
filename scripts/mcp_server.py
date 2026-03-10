@@ -229,7 +229,7 @@ def ingest_article(file_path: str) -> str:
 
     path = Path(file_path)
     if not path.is_absolute():
-        path = get_project_root() / file_path
+        path = get_data_root() / file_path
 
     result = _ingest_article(str(path), settings)
     return f"[{result['status']}] {result['message']}"
