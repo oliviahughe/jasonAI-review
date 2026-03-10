@@ -71,6 +71,19 @@ pip install openai
 
 本项目依赖名为 `jason-kb` 的本地 MCP Server 提供 9 个工具（知识库检索、财务档案读写、文章入库等）。MCP Server 需单独部署，配置方式参考 Claude Code 文档。
 
+### 4. 远程部署
+
+如果你要把 MCP Server 部署到腾讯云轻量应用服务器，请直接看：
+
+- `docs/deploy-tencent-lighthouse.md`
+
+仓库内已提供：
+
+- `Dockerfile`
+- `compose.tencent.yml`
+- `.env.tencent.example`
+- `deploy/caddy/Caddyfile`
+
 ---
 
 ## 使用方式

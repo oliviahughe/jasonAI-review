@@ -1,0 +1,17 @@
+services:
+  jason-kb:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: jason-kb
+    restart: unless-stopped
+    env_file:
+      - .env.tencent
+    environment:
+      MCP_TRANSPORT: sse
+      PORT: 8080
+      DATA_DIR: /data
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./runtime-data:/data
