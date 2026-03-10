@@ -1,0 +1,10 @@
+.git
+.github
+.worktrees
+.venv
+__pycache__/
+*.pyc
+chroma_db/
+config.json
+temp_input.json
+tmp_*.txt

@@ -1,0 +1,33 @@
+# Jason 财经知识库配置文件
+
+openai:
+  api_key: "YOUR_OPENAI_API_KEY_HERE"
+  base_url: "https://api.ofox.ai/v1"
+  embedding_model: "openai/text-embedding-3-small"
+
+
+paths:
+  raw_dir: "raw"
+  chroma_dir: "chroma_db"
+  profile_dir: "profile"
+  financial_yaml: "profile/financial.yaml"
+  advice_history: "profile/advice_history.md"
+
+profiles:
+  default: "墨烦"
+  people:
+    墨烦:
+      financial_yaml: "profile/墨烦financial.yaml"
+      advice_history: "profile/advice_history.md"
+    夜江寒:
+      financial_yaml: "profile/夜江寒financial.yaml"
+      advice_history: "profile/夜江寒_advice_history.md"
+
+ingest:
+  chunk_size: 400        # 每块目标字数（300-500）
+  chunk_overlap: 50      # 块之间的重叠字数
+  collection_name: "jason_kb"
+
+crawl:
+  user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+  timeout: 30
