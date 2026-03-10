@@ -275,6 +275,17 @@ class DeployPlanTests(unittest.TestCase):
 
         self.assertEqual(Path("/data/profile/demo.yaml"), resolved)
 
+    def test_ingest_article_resolves_relative_paths_against_data_dir(self):
+        mcp_server = _load_module("deploy_mcp_server_ingest_path", "scripts/mcp_server.py")
+
+        with patch.dict(os.environ, {"DATA_DIR": "/data"}, clear=False):
+            with patch.object(mcp_server, "_get_settings", return_value={}):
+                with patch.object(mcp_server, "_ingest_article") as ingest_mock:
+                    ingest_mock.return_value = {"status": "ok", "message": "ingested"}
+                    mcp_server.ingest_article("raw/demo.md")
+
+        ingest_mock.assert_called_once_with(str(Path("/data/raw/demo.md")), {})
+
     def test_auth_check_accepts_matching_bearer_token(self):
         mcp_server = _load_module("deploy_mcp_server_auth", "scripts/mcp_server.py")
 
@@ -291,6 +302,54 @@ class DeployPlanTests(unittest.TestCase):
             data_root = crawl.get_data_root()
 
         self.assertEqual(Path("/data"), data_root)
+
+    def test_crawl_article_rejects_non_2xx_http_responses(self):
+        crawl = _load_module("deploy_crawl_http_errors", "scripts/crawl.py")
+
+        class _DummyTag:
+            def __init__(self, text):
+                self._text = text
+
+            def get_text(self, strip=False):
+                return self._text.strip() if strip else self._text
+
+            def find_all(self, names):
+                return []
+
+        class _DummyResponse:
+            text = "<html><body>blocked</body></html>"
+            encoding = "utf-8"
+
+            def raise_for_status(self):
+                raise crawl.requests.RequestException("403 Client Error")
+
+        class _DummySoup:
+            def __init__(self, text, parser):
+                self.text = text
+
+            def find(self, name=None, class_=None, id=None):
+                if name == "h1":
+                    return _DummyTag("blocked")
+                if name == "article":
+                    return _DummyTag("blocked page")
+                if name == "body":
+                    return _DummyTag("blocked page")
+                return None
+
+            def select_one(self, selector):
+                return _DummyTag("blocked page")
+
+        settings = {"crawl": {"user_agent": "ua", "timeout": 5}}
+
+        with patch.object(crawl.requests, "get", return_value=_DummyResponse()):
+            with patch.object(crawl, "BeautifulSoup", _DummySoup):
+                with patch.object(crawl, "md", lambda text, **kwargs: "blocked page"):
+                    with patch.object(crawl, "save_article") as save_mock:
+                        result = crawl.crawl_article("https://example.com/blocked", "知识星球", settings)
+
+        save_mock.assert_not_called()
+        self.assertEqual("error", result["status"])
+        self.assertIn("网络请求失败", result["message"])
 
     def test_migrate_data_copies_seed_data_when_volume_empty(self):
         migrate = _load_module("deploy_migrate_data", "scripts/migrate_data.py")
