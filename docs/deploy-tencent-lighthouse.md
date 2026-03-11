@@ -2,7 +2,7 @@
 
 ## 目标
 
-将 `jason-kb` 作为远程 MCP SSE 服务部署到腾讯云轻量应用服务器，保留本地文件型数据结构：
+将 `jason-kb` 作为远程 MCP streamable HTTP 服务部署到腾讯云轻量应用服务器，保留本地文件型数据结构：
 
 - `profile/`
 - `raw/`
@@ -71,7 +71,7 @@ mkdir -p runtime-data/profile runtime-data/raw runtime-data/chroma_db
 编辑 `.env.tencent`：
 
 ```dotenv
-MCP_TRANSPORT=sse
+MCP_TRANSPORT=streamable_http
 PORT=8080
 DATA_DIR=/data
 AUTH_TOKEN=替换成随机长 token
@@ -135,15 +135,15 @@ sudo systemctl reload caddy
 未带 token 时应返回 `401`：
 
 ```bash
-curl -i https://kb.example.com/sse
+curl -i https://kb.example.com/mcp
 ```
 
-带 token 时应能连上 SSE：
+带 token 时应能到达 MCP HTTP 入口：
 
 ```bash
 curl -i \
   -H "Authorization: Bearer <AUTH_TOKEN>" \
-  https://kb.example.com/sse
+  https://kb.example.com/mcp
 ```
 
 ## 第 7 步：Claude Code 配置
@@ -154,7 +154,7 @@ curl -i \
 {
   "mcpServers": {
     "jason-kb": {
-      "url": "https://kb.example.com/sse",
+      "url": "https://kb.example.com/mcp",
       "headers": {
         "Authorization": "Bearer <AUTH_TOKEN>"
       }

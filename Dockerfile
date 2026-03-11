@@ -7,7 +7,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-ENV MCP_TRANSPORT=sse
+ENV MCP_TRANSPORT=streamable_http
 ENV PORT=8080
 ENV DATA_DIR=/data
 

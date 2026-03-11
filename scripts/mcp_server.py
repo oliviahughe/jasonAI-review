@@ -79,6 +79,27 @@ def _build_sse_app():
     return app
 
 
+def _build_streamable_http_app():
+    """构建带 Bearer auth 的 streamable HTTP app。未配置 AUTH_TOKEN 时不加鉴权。"""
+    app = mcp.streamable_http_app()
+    if not _get_auth_token():
+        return app
+
+    from starlette.middleware.base import BaseHTTPMiddleware
+    from starlette.responses import PlainTextResponse
+
+    class BearerAuthMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request, call_next):
+            if request.url.path in ("/", "/healthz"):
+                return await call_next(request)
+            if not _is_authorized(dict(request.headers)):
+                return PlainTextResponse("Unauthorized", status_code=401)
+            return await call_next(request)
+
+    app.add_middleware(BearerAuthMiddleware)
+    return app
+
+
 def _resolve_profile_paths(settings: dict, profile: Optional[str] = None) -> tuple[str, Path, Path]:
     """根据 profile 名解析财务档案与建议历史路径。兼容旧版单档案配置。"""
     profiles_cfg = settings.get("profiles") or {}
@@ -405,6 +426,9 @@ def save_advice(advice: str, profile: Optional[str] = None) -> str:
 # ============================================================
 def main():
     transport = os.environ.get("MCP_TRANSPORT", "stdio").strip().lower()
+    if transport == "streamable_http":
+        transport = "streamable-http"
+
     if transport == "sse":
         port = int(os.environ.get("PORT", "8080"))
         if _get_auth_token():
@@ -418,6 +442,22 @@ def main():
                 port=port,
             )
         return
+
+    if transport == "streamable-http":
+        if _get_auth_token():
+            import uvicorn
+
+            uvicorn.run(
+                _build_streamable_http_app(),
+                host="0.0.0.0",
+                port=int(os.environ.get("PORT", "8080")),
+            )
+        else:
+            mcp.run(transport="streamable-http")
+        return
+
+    if transport != "stdio":
+        raise ValueError(f"Unknown transport: {transport}")
 
     mcp.run(transport="stdio")
 

@@ -57,6 +57,16 @@ def _stub_fastmcp_module():
 
             return _DummyApp()
 
+        def streamable_http_app(self):
+            class _DummyApp:
+                def __init__(self):
+                    self.middlewares = []
+
+                def add_middleware(self, middleware_cls):
+                    self.middlewares.append(middleware_cls)
+
+            return _DummyApp()
+
     fastmcp_module.FastMCP = _DummyFastMCP
     return fastmcp_module
 
@@ -235,16 +245,16 @@ class DeployPlanTests(unittest.TestCase):
 
         self.assertEqual(Path("/srv/jason-data"), data_root)
 
-    def test_main_uses_sse_transport_when_requested(self):
+    def test_main_uses_streamable_http_transport_when_requested(self):
         mcp_server = _load_module("deploy_mcp_server", "scripts/mcp_server.py")
 
-        with patch.dict(os.environ, {"MCP_TRANSPORT": "sse", "PORT": "9090"}, clear=False):
+        with patch.dict(os.environ, {"MCP_TRANSPORT": "streamable_http", "PORT": "9090"}, clear=False):
             with patch.object(mcp_server.mcp, "run") as run_mock:
                 mcp_server.main()
 
-        run_mock.assert_called_once_with(transport="sse", host="0.0.0.0", port=9090)
+        run_mock.assert_called_once_with(transport="streamable-http")
 
-    def test_main_uses_uvicorn_when_auth_token_is_configured(self):
+    def test_main_uses_uvicorn_when_auth_token_is_configured_for_streamable_http(self):
         mcp_server = _load_module("deploy_mcp_server_uvicorn", "scripts/mcp_server.py")
         uvicorn_calls = []
         uvicorn_stub = types.SimpleNamespace(
@@ -257,7 +267,7 @@ class DeployPlanTests(unittest.TestCase):
 
         with patch.dict(
             os.environ,
-            {"MCP_TRANSPORT": "sse", "PORT": "9091", "AUTH_TOKEN": "secret"},
+            {"MCP_TRANSPORT": "streamable_http", "PORT": "9091", "AUTH_TOKEN": "secret"},
             clear=False,
         ):
             with patch.dict(sys.modules, runtime_stubs):
@@ -266,6 +276,13 @@ class DeployPlanTests(unittest.TestCase):
         self.assertEqual(1, len(uvicorn_calls))
         self.assertEqual("0.0.0.0", uvicorn_calls[0]["host"])
         self.assertEqual(9091, uvicorn_calls[0]["port"])
+
+    def test_main_rejects_unknown_transport(self):
+        mcp_server = _load_module("deploy_mcp_server_invalid_transport", "scripts/mcp_server.py")
+
+        with patch.dict(os.environ, {"MCP_TRANSPORT": "bogus-transport"}, clear=False):
+            with self.assertRaises(ValueError):
+                mcp_server.main()
 
     def test_resolve_path_uses_data_dir_for_runtime_data(self):
         mcp_server = _load_module("deploy_mcp_server_paths", "scripts/mcp_server.py")
