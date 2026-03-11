@@ -182,6 +182,11 @@ curl -i \
 - 带 token：不再出现 `421 Invalid Host header`
 - 普通 `curl` 带 token 时返回 `406 Not Acceptable` 也是正常的，因为 `curl` 不是完整的 MCP 客户端
 
+进一步判断：
+
+- `406 Not Acceptable` 说明问题已经从网络 / Host 层推进到 MCP 协议协商层，通常是请求头里的 `Accept` 不符合 `streamable_http` 预期
+- 如果完整 MCP 客户端在 `initialize` 阶段报 `401 Unauthorized`，优先怀疑客户端没有把 Bearer 头真正带上，而不是 Caddy 反代问题
+
 ## 第 7 步：Claude Code 配置
 
 把本地 MCP 配置改成：
@@ -212,6 +217,29 @@ curl -i \
     }
   }
 }
+```
+
+如果你使用的是 Codex CLI，请写成 `config.toml` 的 TOML 结构，注意 Bearer 头字段名是 `http_headers`：
+
+```toml
+[mcp_servers.jason-kb]
+url = "http://101.32.219.232/mcp"
+
+[mcp_servers.jason-kb.http_headers]
+Authorization = "Bearer <AUTH_TOKEN>"
+```
+
+不要写成：
+
+```toml
+[mcp_servers.jason-kb.headers]
+Authorization = "Bearer <AUTH_TOKEN>"
+```
+
+在当前 Codex 版本里，这种写法可能被忽略，导致 `initialize` 请求实际未带鉴权头，表现为：
+
+```text
+Unauthorized"), when send initialize request
 ```
 
 ## 数据迁移策略

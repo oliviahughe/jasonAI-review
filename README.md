@@ -1,6 +1,6 @@
 # Jason AI 理财助手
 
-基于财经博主「Jason 不跪」内容构建的私有知识库系统，集成在 Claude Code 中使用。通过 MCP Server 提供知识检索、理财建议、财务档案管理等功能，所有数据存储在本地。
+基于财经博主「Jason 不跪」内容构建的私有知识库系统，集成在 Claude Code 中使用。通过 MCP Server 提供知识检索、理财建议、财务档案管理等功能。数据存储位置取决于你当前连接的 MCP 服务部署位置：连本地服务时写本机，连远程服务时写远程服务器本地磁盘。
 
 ---
 
@@ -161,6 +161,22 @@ Authorization: Bearer <你的 AUTH_TOKEN>
 
 如果服务端没有配置 `AUTH_TOKEN`，可以去掉 `headers`。
 
+如果你使用的是 **Codex CLI**，本地配置文件是 `~/.codex/config.toml`，Bearer 头要写在 `http_headers` 下，而不是 `headers`。示例：
+
+```toml
+[mcp_servers.jason-kb]
+url = "http://101.32.219.232/mcp"
+
+[mcp_servers.jason-kb.http_headers]
+Authorization = "Bearer <你的 AUTH_TOKEN>"
+```
+
+排障经验：
+
+- `401 Unauthorized`：通常表示客户端初始化请求没有真正带上 `Authorization`
+- 如果你已经确认手工 `POST /mcp` 带 Bearer 可以成功 `initialize`，但 Codex 仍报 `Unauthorized`，优先检查是否把 `http_headers` 误写成了 `headers`
+- 普通 `curl` 带 token 返回 `406 Not Acceptable` 仍然是正常现象，说明请求已经穿过网络和 Host 校验，进入了 MCP 协议协商层
+
 #### 其他 AI CLI / MCP 客户端
 
 只要客户端支持 MCP over streamable HTTP，都可以接入这个服务。最少需要提供以下信息：
@@ -197,7 +213,7 @@ Authorization: Bearer <你的 AUTH_TOKEN>
 ## 注意事项
 
 - `config.json`（含 API Key）已加入 `.gitignore`，不会提交到 Git
-- 知识库向量数据存储在本地，不会上传到外部服务器（Embedding API 调用除外）
+- 知识库向量数据写到当前 MCP 服务所在机器的本地磁盘；如果客户端配置的是远程 `jason-kb`，那就是远程服务器本地磁盘，不是当前客户端机器
 - 建议生成内置硬约束校验，若 AI 输出与结构化财务数据冲突会自动重试，最多重试 2 次；仍不通过则拒绝返回，防止错误建议流出
 
 
