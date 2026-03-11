@@ -107,6 +107,20 @@ python scripts/mcp_server.py
 https://你的域名/mcp
 ```
 
+如果你暂时没有域名，也可以先用 Caddy 做一个基于 IP 的临时反代：
+
+```text
+http://服务器公网IP/mcp
+```
+
+注意：不要直接把客户端指向 `http://服务器公网IP:8080/mcp`。`jason-kb` 的 streamable HTTP 服务会对 `Host` 做校验，公网直连常见结果是：
+
+```text
+421 Invalid Host header
+```
+
+正确做法是通过反向代理把外部请求转发到 `127.0.0.1:8080`，并把上游 `Host` 改写为 `127.0.0.1:8080`。
+
 如果服务端配置了 `AUTH_TOKEN`，客户端请求时还需要带上：
 
 ```text
@@ -130,6 +144,21 @@ Authorization: Bearer <你的 AUTH_TOKEN>
 }
 ```
 
+没有域名时，可暂时改为：
+
+```json
+{
+  "mcpServers": {
+    "jason-kb": {
+      "url": "http://101.32.219.232/mcp",
+      "headers": {
+        "Authorization": "Bearer <你的 AUTH_TOKEN>"
+      }
+    }
+  }
+}
+```
+
 如果服务端没有配置 `AUTH_TOKEN`，可以去掉 `headers`。
 
 #### 其他 AI CLI / MCP 客户端
@@ -140,6 +169,11 @@ Authorization: Bearer <你的 AUTH_TOKEN>
 - Transport: `streamable_http`
 - URL: `https://你的域名/mcp`
 - Header: `Authorization: Bearer <你的 AUTH_TOKEN>`（如果服务端启用了鉴权）
+
+临时无域名时：
+
+- URL: `http://服务器公网IP/mcp`
+- 仍然建议走 Caddy / Nginx 之类的反代，不要直连 `:8080`
 
 工具列表会由 MCP Server 自动暴露，客户端无需手动维护工具 schema。
 

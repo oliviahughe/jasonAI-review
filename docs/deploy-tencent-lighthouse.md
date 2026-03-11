@@ -100,7 +100,7 @@ docker compose -f compose.tencent.yml logs -f
 2. 如果 `/data` 为空，就把镜像里的 `profile/` 与 `raw/` 种子数据复制过去
 3. 启动 `python scripts/mcp_server.py`
 
-服务实际监听在容器内 `8080`，宿主机绑定为 `127.0.0.1:8080`，默认不直接暴露公网。
+服务实际监听在容器内 `8080`。如果你已经有域名，建议宿主机只配合反代对外暴露 `/mcp`；如果你还没有域名，也可以临时把 `compose.tencent.yml` 改成直接暴露 `8080`，再通过 IP 反代到 `127.0.0.1:8080`。
 
 ## 第 5 步：配置 HTTPS 反向代理
 
@@ -120,7 +120,27 @@ sudo apt-get install -y caddy
 ```caddyfile
 kb.example.com {
     encode gzip
-    reverse_proxy 127.0.0.1:8080
+    reverse_proxy /mcp 127.0.0.1:8080 {
+        header_up Host 127.0.0.1:8080
+    }
+}
+```
+
+`header_up Host 127.0.0.1:8080` 很关键。`jason-kb` 的 streamable HTTP 服务在公网直连 `:8080` 时可能返回：
+
+```text
+421 Invalid Host header
+```
+
+通过反代把上游 `Host` 固定为 `127.0.0.1:8080` 后，请求才能正常进入 MCP 协议层。
+
+如果你暂时没有域名，也可以先用一个基于 IP 的临时 Caddy 配置：
+
+```caddyfile
+:80 {
+    reverse_proxy /mcp 127.0.0.1:8080 {
+        header_up Host 127.0.0.1:8080
+    }
 }
 ```
 
@@ -146,6 +166,22 @@ curl -i \
   https://kb.example.com/mcp
 ```
 
+如果你还没有域名，临时 IP 版验证命令是：
+
+```bash
+curl -i http://101.32.219.232/mcp
+
+curl -i \
+  -H "Authorization: Bearer <AUTH_TOKEN>" \
+  http://101.32.219.232/mcp
+```
+
+预期：
+
+- 不带 token：`401 Unauthorized`
+- 带 token：不再出现 `421 Invalid Host header`
+- 普通 `curl` 带 token 时返回 `406 Not Acceptable` 也是正常的，因为 `curl` 不是完整的 MCP 客户端
+
 ## 第 7 步：Claude Code 配置
 
 把本地 MCP 配置改成：
@@ -155,6 +191,21 @@ curl -i \
   "mcpServers": {
     "jason-kb": {
       "url": "https://kb.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer <AUTH_TOKEN>"
+      }
+    }
+  }
+}
+```
+
+如果还没有域名，可暂时改为：
+
+```json
+{
+  "mcpServers": {
+    "jason-kb": {
+      "url": "http://101.32.219.232/mcp",
       "headers": {
         "Authorization": "Bearer <AUTH_TOKEN>"
       }
@@ -206,5 +257,7 @@ docker compose -f compose.tencent.yml down
 ## 当前限制
 
 - 这套方案默认是单机部署，不做多副本高可用
-- HTTPS 推荐依赖域名 + Caddy；如果没有域名，只能先用临时 IP 调试
+- 最佳长期方案仍然是 `域名 + HTTPS + 反向代理`
+- 没有域名时，可先用 `IP + Caddy(:80) + /mcp 反代` 的临时方案
+- 不建议客户端直连 `http://公网IP:8080/mcp`，否则可能遇到 `421 Invalid Host header`
 - `runtime-data/` 在服务器本地磁盘上，备份需要你自己做
