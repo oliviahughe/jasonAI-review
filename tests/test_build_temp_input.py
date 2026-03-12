@@ -1,5 +1,7 @@
 import importlib.util
 import json
+import subprocess
+import sys
 import unittest
 from pathlib import Path
 
@@ -203,6 +205,50 @@ class BuildTempInputTests(unittest.TestCase):
         self.assertEqual("web", payload["web_results"])
         self.assertEqual("", payload["history"])
         self.assertNotIn("raw_facts", payload)
+
+    def test_cli_research_mode_runs_from_repo_root(self):
+        question_file = TMP_ROOT / "question.txt"
+        kb_file = TMP_ROOT / "kb.txt"
+        profile_file = TMP_ROOT / "profile.txt"
+        market_file = TMP_ROOT / "market.txt"
+        web_file = TMP_ROOT / "web.txt"
+        output_file = TMP_ROOT / "temp_input.json"
+
+        question_file.write_text("Jason 怎么看黄金？", encoding="utf-8")
+        kb_file.write_text("kb", encoding="utf-8")
+        profile_file.write_text("风险偏好: 稳健", encoding="utf-8")
+        market_file.write_text("market", encoding="utf-8")
+        web_file.write_text("web", encoding="utf-8")
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(MODULE_PATH),
+                "--question-file",
+                str(question_file),
+                "--kb-file",
+                str(kb_file),
+                "--financial-profile-file",
+                str(profile_file),
+                "--market-data-file",
+                str(market_file),
+                "--web-results-file",
+                str(web_file),
+                "--mode",
+                "research",
+                "--as-of-date",
+                "2026-03-12",
+                "--output",
+                str(output_file),
+            ],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(0, result.returncode, msg=result.stderr)
+        raw = json.loads(output_file.read_text(encoding="utf-8"))
+        self.assertEqual("research", raw["mode"])
 
 
 if __name__ == "__main__":

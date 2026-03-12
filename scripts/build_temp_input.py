@@ -14,10 +14,14 @@ import argparse
 import csv
 import json
 import re
+import sys
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-from scripts.context_router import budget_text_blocks, classify_mode, compact_history
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from scripts.context_router import budget_text_blocks, compact_history
 
 SKILL_DIR = Path(__file__).parent.parent
 DEFAULT_OUTPUT = SKILL_DIR / "temp_input.json"
