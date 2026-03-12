@@ -148,14 +148,24 @@ def derive_metrics(data: dict) -> dict:
     if not (has_numeric_facts or has_positions or has_policy):
         return {}
 
-    cash = _to_float(raw.get("cash_cny"))
+    bank_cash = _to_float(raw.get("bank_cash_cny"))
+    money_market_funds = _to_float(raw.get("money_market_funds_cny"))
+    broker_cash = _to_float(raw.get("broker_cash_cny"))
+    broker_positions = _to_float(raw.get("broker_positions_cny"))
+    loan_receivable = _to_float(raw.get("loan_receivable_cny"))
+    cash = _to_float(raw.get("cash_cny"), default=bank_cash + broker_cash)
     fund_total = _to_float(raw.get("fund_total_cny"))
+    low_risk_assets = _to_float(raw.get("low_risk_assets_cny"), default=bank_cash + money_market_funds + broker_cash)
+    total_financial_assets = _to_float(
+        raw.get("total_financial_assets_cny"),
+        default=low_risk_assets + max(fund_total - money_market_funds, 0.0) + broker_positions + loan_receivable,
+    )
     liquid_assets = cash + fund_total
 
     limit_ratio = _percent_to_ratio(policy.get("single_asset_limit_ratio"))
     if limit_ratio <= 0:
         limit_ratio = 0.15
-    limit_amount = liquid_assets * limit_ratio
+    limit_amount = total_financial_assets * limit_ratio
 
     positions = raw.get("positions") or []
     if not isinstance(positions, list):
@@ -186,10 +196,11 @@ def derive_metrics(data: dict) -> dict:
 
     focus_amount = _to_float((focus_position or {}).get("amount_cny"))
     focus_hold_return_ratio = _percent_to_ratio((focus_position or {}).get("hold_return"))
-    focus_total_asset_ratio = (focus_amount / liquid_assets) if liquid_assets > 0 else None
+    focus_total_asset_ratio = (focus_amount / total_financial_assets) if total_financial_assets > 0 else None
     focus_fund_internal_ratio = (focus_amount / fund_total) if fund_total > 0 else None
     focus_need_reduce = bool(focus_position) and focus_amount > limit_amount
-    cash_ratio = (cash / liquid_assets) if liquid_assets > 0 else None
+    cash_ratio = (cash / total_financial_assets) if total_financial_assets > 0 else None
+    low_risk_ratio = (low_risk_assets / total_financial_assets) if total_financial_assets > 0 else None
 
     stop_loss_rule_exists = bool(policy.get("stop_loss_rule_exists", False))
     stop_loss_ratio = None
@@ -214,16 +225,24 @@ def derive_metrics(data: dict) -> dict:
     return {
         "basis": {
             "liquid_assets_formula": "cash_cny + fund_total_cny",
-            "single_asset_limit_formula": "single_asset_limit_ratio * (cash_cny + fund_total_cny)",
+            "total_financial_assets_formula": "low_risk_assets_cny + non_low_risk_funds + broker_positions_cny + loan_receivable_cny",
+            "single_asset_limit_formula": "single_asset_limit_ratio * total_financial_assets_cny",
             "single_asset_limit_ratio": limit_ratio,
             "focus_asset_keywords": focus_keywords,
-            "single_asset_limit_applies_to": "总金融资产口径（cash_cny + fund_total_cny）",
+            "single_asset_limit_applies_to": "总金融资产口径（total_financial_assets_cny）",
             "allocation_target_ratios": allocation_target_ratios,
         },
         "metrics": {
+            "bank_cash_cny": round(bank_cash, 2),
+            "money_market_funds_cny": round(money_market_funds, 2),
+            "broker_cash_cny": round(broker_cash, 2),
+            "broker_positions_cny": round(broker_positions, 2),
+            "loan_receivable_cny": round(loan_receivable, 2),
             "cash_cny": round(cash, 2),
+            "low_risk_assets_cny": round(low_risk_assets, 2),
             "fund_total_cny": round(fund_total, 2),
             "liquid_assets_cny": round(liquid_assets, 2),
+            "total_financial_assets_cny": round(total_financial_assets, 2),
             "single_asset_limit_cny": round(limit_amount, 2),
             "focus_asset_name": focus_asset_name,
             "focus_amount_cny": round(focus_amount, 2),
@@ -231,6 +250,7 @@ def derive_metrics(data: dict) -> dict:
             "focus_fund_internal_ratio": round(focus_fund_internal_ratio, 6) if focus_fund_internal_ratio is not None else None,
             "focus_hold_return_ratio": round(focus_hold_return_ratio, 6) if focus_hold_return_ratio is not None else None,
             "cash_ratio": round(cash_ratio, 6) if cash_ratio is not None else None,
+            "low_risk_ratio": round(low_risk_ratio, 6) if low_risk_ratio is not None else None,
             "pending_sell_count": pending_sell_count,
         },
         "decision_flags": {
@@ -364,13 +384,40 @@ def detect_output_conflicts(text: str, derived: dict) -> list:
 
 
 def build_messages(data: dict, retry_conflicts: list[str] | None = None) -> list:
+    mode = data.get("mode", "advice")
     question = data.get("question", "（未提供问题）")
     kb_results = data.get("kb_results", "（无知识库结果）")
     financial_profile = data.get("financial_profile", "（无财务档案）")
     market_data = data.get("market_data", "") or "（无市场数据）"
+    web_results = data.get("web_results", "") or "（无补充检索结果）"
     history = data.get("history", "") or ""
     contract_report = validate_contract(data)
     derived = derive_metrics(data)
+
+    if mode == "research":
+        system_content = (
+            "你是一个专业的个人财务助手，参考财经博主「Jason 不跪」的投资理念，"
+            "整合知识库、近期市场信息和补充检索结果，回答用户的咨询问题。\n\n"
+            "要求：\n"
+            "- 优先回答用户真正关心的问题，不强行转成调仓建议\n"
+            "- 明确区分 Jason 观点、市场事实和你自己的综合判断\n"
+            "- 如果 Jason 知识库没有覆盖，明确说明，不要编造\n"
+            "- 输出清晰直接，避免学术腔"
+        )
+        user_content = "\n".join(
+            [
+                f"## 用户问题\n{question}\n",
+                f"## 知识库检索结果（Jason 的观点）\n{kb_results}\n",
+                f"## 近30天市场动态\n{market_data}\n",
+                f"## 补充检索结果\n{web_results}\n",
+                f"## 用户财务背景（仅作轻量参考）\n{financial_profile}\n",
+                "---\n请整合以上信息，回答用户问题。若涉及市场信息，请尽量带具体日期；若知识库中没有直接依据，明确说明不确定性。",
+            ]
+        )
+        return [
+            {"role": "system", "content": system_content},
+            {"role": "user", "content": user_content},
+        ]
 
     system_content = (
         "你是一个专业的个人理财顾问，参考财经博主「Jason 不跪」的投资理念，为用户提供个性化的理财建议。\n\n"
@@ -394,6 +441,7 @@ def build_messages(data: dict, retry_conflicts: list[str] | None = None) -> list
         f"## 知识库检索结果（Jason 的观点）\n{kb_results}\n",
         f"## 用户财务档案\n{financial_profile}\n",
         f"## 近30天市场动态\n{market_data}\n",
+        f"## 补充检索结果\n{web_results}\n",
     ]
 
     if history:
@@ -411,16 +459,17 @@ def build_messages(data: dict, retry_conflicts: list[str] | None = None) -> list
         flags = derived.get("decision_flags") or {}
         hard_facts = [
             f"- 焦点资产：{metrics.get('focus_asset_name') or '恒生科技'}",
-            f"- 总金融资产（cash+fund口径）= {metrics.get('liquid_assets_cny')} 元",
-            f"- 现金（外部账户，不含货基）= {metrics.get('cash_cny')} 元",
-            f"- 基金合计 = {metrics.get('fund_total_cny')} 元",
-            f"- 现金占总金融资产比 = {_ratio_to_pct_str(metrics.get('cash_ratio'))}（以上口径为准，不要自行加减货基后重算）",
+            f"- 总金融资产 = {metrics.get('total_financial_assets_cny')} 元",
+            f"- 低风险资金 = {metrics.get('low_risk_assets_cny')} 元，占比 {_ratio_to_pct_str(metrics.get('low_risk_ratio'))}",
+            f"- 现金（银行现金+券商现金，不含货基）= {metrics.get('cash_cny')} 元",
+            f"- 基金合计（含货基） = {metrics.get('fund_total_cny')} 元",
             f"- 焦点资产金额 = {metrics.get('focus_amount_cny')} 元",
             f"- 焦点资产总金融资产占比 = {_ratio_to_pct_str(metrics.get('focus_total_asset_ratio'))}",
             f"- 焦点资产基金内部占比 = {_ratio_to_pct_str(metrics.get('focus_fund_internal_ratio'))}",
             f"- 单资产上限金额 = {metrics.get('single_asset_limit_cny')} 元",
             f"- 单资产15%规则是否已满足 = {'是' if flags.get('focus_already_within_limit') else '否'}",
             f"- 是否存在显式止损规则 = {'是' if flags.get('stop_loss_rule_exists') else '否'}",
+            '- 50%低风险配置是中期目标，不是单日必须精确打到的硬阈值；若建议调仓，只能说方向和节奏，不能强行推导“今天必须腾挪 X 万元”',
             '- 若要描述"当前事实"，只能使用上面这些金额和占比；不要自行改写成别的当前数字',
         ]
         user_parts.append("## 硬约束（不得冲突）\n" + "\n".join(hard_facts) + "\n")
@@ -446,7 +495,8 @@ def build_messages(data: dict, retry_conflicts: list[str] | None = None) -> list
         "5. 如果 last30days 数据缺失，基于知识库和财务档案继续给建议\n"
         "6. 若程序计算结果与文本描述冲突，优先采用程序计算结果并说明口径\n"
         "7. 若焦点资产已低于15%上限，不能再把'降到15%以下'作为当前建议理由；如仍建议减仓，只能基于基金内部集中度、趋势、再平衡或用户风险承受度\n"
-        "8. 若未提供止损规则，禁止自行编造'触及15%止损线/纪律线'"
+        "8. 若未提供止损规则，禁止自行编造'触及15%止损线/纪律线'\n"
+        "9. 若低风险资金高于50%目标，只能表述为“偏高、可逐步消化”，不能在没有明确结构化依据时输出“约X万元闲置/必须马上转出X万元”"
     )
 
     return [
@@ -456,6 +506,17 @@ def build_messages(data: dict, retry_conflicts: list[str] | None = None) -> list
 
 
 def generate_with_guardrails(client, cfg: dict, data: dict) -> str:
+    mode = data.get("mode", "advice")
+    if mode != "advice":
+        messages = build_messages(data)
+        response = client.chat.completions.create(
+            model=cfg["model"],
+            messages=messages,
+            temperature=0.3,
+            max_tokens=2000,
+        )
+        return response.choices[0].message.content or ""
+
     retry_conflicts = None
     final_conflicts = []
     for _ in range(MAX_RETRIES + 1):

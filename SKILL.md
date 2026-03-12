@@ -46,10 +46,17 @@ description: >
 用户可能说："我多了 5 万闲钱怎么配"、"现在该买基金吗"、"A 股还能加仓吗"
 
 **执行流程：**
-1. **并行**执行以下三步（同时发起，不要顺序等待）：
+1. 先判断模式：
+   - `research`：常识问答、观点咨询、原理解释、方向讨论
+   - `advice`：资产配置、买卖建议、调仓、分批计划、持仓风险
+   - 若只是查询过去建议，转到场景 F
+   - 若只是更新资产/收入/持仓，转到场景 D
+
+2. **并行**执行以下步骤（按模式取用，不要顺序等待）：
    - 调用 `search_knowledge_base(用户问题相关关键词)` 检索 Jason 观点
-   - 调用 `get_financial_profile()` 读取财务状态
    - 用 Bash 运行市场信息脚本（见下方命令），获取近 30 天市场动态
+   - 如宿主 AI 具备 web search 能力，补充 1 到 3 条高相关结果
+   - 只有 `advice` 模式才调用 `get_financial_profile()` 读取财务状态
 
    **市场信息脚本命令**（根据用户问题替换关键词；默认优先更早窗口）：
    ```bash
@@ -71,41 +78,59 @@ description: >
    - 问卫星通信 → `"satellite communication stocks China"`
    - 其他话题：直接翻译为对应英文金融术语
 
-2. 可选：调用 `get_advice_history()` 查看之前的建议
+3. 只有 `advice` 模式才可选调用 `get_advice_history()`，并且只保留最近仍有约束力的建议主线，不要把全部历史原文无限带入
 
-3. 优先使用结构化构建脚本生成临时输入文件：
+4. 优先使用结构化构建脚本生成临时输入文件：
    路径：`C:/Users/69050/.claude/skills/jason-kb/temp_input.json`
 
-   当用户提供的是持仓 CSV / 表格时，不要手工拼 `raw_facts`，优先调用：
+   `research` 模式示例：
    ```bash
    python "C:/Users/69050/.claude/skills/jason-kb/scripts/build_temp_input.py" \
      --question-file "<question.txt>" \
      --kb-file "<kb.txt>" \
      --financial-profile-file "<profile.txt>" \
      --market-data-file "<market.txt>" \
+     --web-results-file "<web.txt>" \
+     --mode research \
+     --as-of-date "YYYY-MM-DD"
+   ```
+
+   `advice` 模式且用户提供的是持仓 CSV / 表格时，不要手工拼 `raw_facts`，优先调用：
+   ```bash
+   python "C:/Users/69050/.claude/skills/jason-kb/scripts/build_temp_input.py" \
+     --question-file "<question.txt>" \
+     --kb-file "<kb.txt>" \
+     --financial-profile-file "<profile.txt>" \
+     --market-data-file "<market.txt>" \
+     --web-results-file "<web.txt>" \
      --history-file "<history.txt>" \
      --csv-path "<holding.csv>" \
+     --mode advice \
      --as-of-date "YYYY-MM-DD"
    ```
    说明：
-   - `question.txt / kb.txt / profile.txt / market.txt / history.txt` 由宿主 AI 先写成 UTF-8 文本文件
-   - 脚本会自动解析 CSV、提取 `cash/fund_total/positions/pending_trades` 并写入 `temp_input.json`
+   - `question.txt / kb.txt / profile.txt / market.txt / web.txt / history.txt` 由宿主 AI 先写成 UTF-8 文本文件
+   - `research` 模式只组装轻量问答上下文，不强制要求持仓事实
+   - `advice` 模式才会自动解析 CSV、提取 `cash/fund_total/positions/pending_trades` 并写入 `temp_input.json`
    - `现金及活期` 默认会尝试从 `financial_profile` 文本中自动提取；若解析失败，再补 `--cash-cny`
    - 默认焦点资产为 `恒生科技`；若用户问题针对别的资产，可传 `--focus-asset-name` 和 `--focus-keywords`
    - 如无显式止损线，不要传 `--stop-loss-rule-exists`，保持默认 `false`
+   - 脚本会自动做一层弹性上下文收敛；`advice` 会保留更多当前事实，`research` 更轻
 
-4. 若没有可用 CSV，才退回手工写 `temp_input.json`
+5. 若没有可用 CSV，才退回手工写 `temp_input.json`
 
-   JSON 结构（前 5 个字段兼容旧流程；`raw_facts` 与 `policy_constraints` 为强烈建议提供的结构化字段，涉及仓位/风控/再平衡时应一并写入）：
+   JSON 结构（`mode`、`web_results` 为新增字段；`raw_facts` 与 `policy_constraints` 只建议在 `advice` 模式携带）：
    ```json
    {
+     "mode": "research 或 advice",
      "question": "用户的原始问题",
      "kb_results": "search_knowledge_base 返回的完整内容",
      "financial_profile": "get_financial_profile 返回的完整内容",
      "market_data": "last30days 脚本输出（若执行失败填空字符串）",
+     "web_results": "补充 web 搜索结果（若无则填空字符串）",
      "history": "get_advice_history 返回的内容（若未调用填空字符串）",
-     "raw_facts": {
-       "as_of_date": "2026-03-06",
+      "raw_facts": {
+        "as_of_date": "2026-03-06",
        "focus_asset_name": "恒生科技",
        "cash_cny": 76531,
        "fund_total_cny": 23366.35,
@@ -139,21 +164,23 @@ description: >
    - `focus_asset_name + focus_asset_keywords` 用于锁定重点资产，避免模型把“基金内部占比”和“总金融资产占比”混淆
    - 如果**没有显式止损线**，务必写 `stop_loss_rule_exists=false`，防止模型自行脑补“触及纪律线/止损线”
    - 若某条旧规则已经完成，应在 `question` 或 `history` 中明确写“已完成，不再作为当前动作依据”
+   - `research` 模式不要为了凑结构而硬塞 `raw_facts`，否则会把普通咨询错误升级成仓位建议
 
-5. 用 Bash 调用 DeepSeek API 脚本生成建议：
+6. 用 Bash 调用 DeepSeek API 脚本生成建议：
    ```bash
    python "C:/Users/69050/.claude/skills/jason-kb/scripts/call_deepseek.py" 2>&1
    ```
    脚本会自动读取 `temp_input.json`，调用 DeepSeek API，将建议输出到 stdout。
    当前脚本已支持：
-   - 结构化事实优先
-   - “15%上限/止损线”等硬冲突校验
-   - 冲突后自动重试
-   - 多次失败后拒绝返回错误建议
+   - `research / advice` 分模式 prompt
+   - 结构化事实优先（仅 `advice`）
+   - “15%上限/止损线”等硬冲突校验（仅 `advice`）
+   - 冲突后自动重试（仅 `advice`）
+   - 多次失败后拒绝返回错误建议（仅 `advice`）
 
-6. 将脚本输出的建议**原样展示**给用户，不要二次改写或精简
+7. 将脚本输出的建议**原样展示**给用户，不要二次改写或精简
 
-7. 调用 `save_advice(建议摘要)` 记录本次建议（摘要由你提炼，不超过 200 字）
+8. 只有 `advice` 模式才调用 `save_advice(建议摘要)` 记录本次建议（摘要由你提炼，不超过 200 字）
 
 **脚本报错处理：**
 - 报错「未找到 DeepSeek API Key」→ 提醒用户配置 `C:/Users/69050/.claude/skills/jason-kb/config.json`（见注意事项）
@@ -202,6 +229,8 @@ description: >
 - 数据落点取决于当前连接的 MCP 服务：本地连接写本机，远程连接写远程服务器；Embedding/API 调用是否出机仍取决于该服务端配置
 - 如果工具调用报错提示 API Key 无效，提醒用户检查 `config/settings.yaml` 中的配置
 - 如果知识库为空（没有文章），引导用户先往 raw/ 目录放入文章并执行入库
+- 普通咨询默认应优先走 `research`，不要强行附带持仓和历史建议
+- 建议历史只保留最近仍相关的主线摘要，不要无限累积全文
 
 ## DeepSeek API 配置（首次使用建议部分必须配置）
 
