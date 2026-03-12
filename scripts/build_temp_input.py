@@ -17,7 +17,7 @@ import re
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-from scripts.context_router import classify_mode, compact_history
+from scripts.context_router import budget_text_blocks, classify_mode, compact_history
 
 SKILL_DIR = Path(__file__).parent.parent
 DEFAULT_OUTPUT = SKILL_DIR / "temp_input.json"
@@ -413,6 +413,20 @@ def build_payload(args: argparse.Namespace) -> dict:
         "web_results": web_results,
         "history": compact_history(history) if history else "",
     }
+    payload.update(
+        budget_text_blocks(
+            {
+                "question": payload["question"],
+                "kb_results": payload["kb_results"],
+                "financial_profile": payload["financial_profile"],
+                "market_data": payload["market_data"],
+                "web_results": payload["web_results"],
+                "history": payload["history"],
+            },
+            mode=mode,
+            soft_limit=5000 if mode == "advice" else 3200,
+        )
+    )
 
     if mode != "advice":
         return payload
